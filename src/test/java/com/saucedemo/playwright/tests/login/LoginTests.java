@@ -19,7 +19,7 @@ public class LoginTests extends PlaywrightTestBase {
     }
 
     @Test
-    public void invalidPasswordShowsAnError() {
+     public void invalidPasswordShowsAnError() {
         LoginPage loginPage = new LoginPage(page);
         loginPage.login(DemoUsers.STANDARD_USERNAME, "incorrect-password");
 
