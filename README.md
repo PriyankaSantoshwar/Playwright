@@ -72,6 +72,24 @@ mvn clean test -Dsite.url=https://www.saucedemo.com/
 
 TestNG reports and failure screenshots are generated under `target/`.
 
+### Run tests and email the report locally
+
+The local runner executes the headless TestNG suite, then emails a summary with the Surefire XML reports attached as a ZIP file. It uses Python's standard library; Maven and the Playwright Chromium browser must be installed first.
+
+Set the same SMTP and recipient environment variables documented in the CI section (`SMTP_SERVER`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `REPORT_EMAIL_TO`, and `REPORT_EMAIL_FROM`). `SMTP_PORT` is optional and defaults to `587`; port `465` uses implicit TLS.
+
+```bash
+export SMTP_SERVER=smtp.example.com
+export SMTP_PORT=587
+export SMTP_USERNAME=your-smtp-username
+export SMTP_PASSWORD=your-smtp-app-password
+export REPORT_EMAIL_TO=recipient@example.com
+export REPORT_EMAIL_FROM=sender@example.com
+python3 scripts/run-tests-with-email.py
+```
+
+The script exits with the Maven test status. Email and SMTP configuration errors are printed explicitly; keep credentials in environment variables rather than source files.
+
 ## Project structure
 
 ```text
@@ -91,4 +109,17 @@ The sibling `Priyanka_Selenium-main` project targets the same SauceDemo site and
 
 ## CI
 
-GitHub Actions installs Playwright Chromium with its Linux dependencies, runs the TestNG suite headlessly, and uploads reports and failure screenshots.
+GitHub Actions installs Playwright Chromium with its Linux dependencies, runs the TestNG suite headlessly, and uploads reports and failure screenshots. When email is configured, the workflow also emails a test summary and attaches the Surefire reports as a ZIP file.
+
+To enable email notifications, add these repository actions secrets:
+
+| Secret | Description |
+| --- | --- |
+| `SMTP_SERVER` | SMTP server hostname |
+| `SMTP_PORT` | SMTP server port (optional; defaults to `587`) |
+| `SMTP_USERNAME` | SMTP username |
+| `SMTP_PASSWORD` | SMTP password or app password |
+| `REPORT_EMAIL_TO` | Report recipient address |
+| `REPORT_EMAIL_FROM` | Sender address accepted by the SMTP server |
+
+If the required secrets are not set, the workflow skips email and still uploads the test reports.

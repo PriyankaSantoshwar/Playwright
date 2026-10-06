@@ -24,6 +24,38 @@ jobs:
       - name: Run TestNG suite
         run: mvn --batch-mode clean test -Dplaywright.headless=true
 
+      - name: Prepare test report summary
+        if: always()
+        id: report
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import shutil
+          import xml.etree.ElementTree as ET
+
+          totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+          report_files = glob.glob("target/surefire-reports/TEST-*.xml")
+          for report_file in report_files:
+              root = ET.parse(report_file).getroot()
+              for key in totals:
+                  totals[key] += int(root.attrib.get(key, 0))
+
+          summary = (
+              f"Tests: {totals['tests']}, "
+              f"Passed: {totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped']}, "
+              f"Failures: {totals['failures']}, Errors: {totals['errors']}, "
+              f"Skipped: {totals['skipped']}"
+              if report_files
+              else "No Surefire XML reports were generated."
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"summary={summary}\n")
+
+          os.makedirs("target/surefire-reports", exist_ok=True)
+          shutil.make_archive("target/playwright-test-report", "zip", "target/surefire-reports")
+          PY
+
       - name: Upload test reports and failure screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -33,3 +65,41 @@ jobs:
             target/surefire-reports/
             target/screenshots/
           if-no-files-found: warn
+
+      - name: Check email notification configuration
+        if: always()
+        id: email-config
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
+          REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
+        run: |
+          if [ -n "$SMTP_SERVER" ] && [ -n "$SMTP_USERNAME" ] && [ -n "$SMTP_PASSWORD" ] \
+            && [ -n "$REPORT_EMAIL_TO" ] && [ -n "$REPORT_EMAIL_FROM" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Email notification skipped: configure the required repository secrets."
+          fi
+
+      - name: Email test report
+        if: ${{ always() && steps.email-config.outputs.enabled == 'true' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT || '587' }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Playwright test report: ${{ job.status }}"
+          to: ${{ secrets.REPORT_EMAIL_TO }}
+          from: ${{ secrets.REPORT_EMAIL_FROM }}
+          content_type: text/plain
+          body: |
+            Playwright UI test run: ${{ job.status }}
+
+            ${{ steps.report.outputs.summary }}
+
+            View workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          attachments: target/playwright-test-report.zip
