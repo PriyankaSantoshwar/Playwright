@@ -4,52 +4,13 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      target_environment:
-        description: Environment to test
-        type: choice
-        required: true
-        default: qa
-        options:
-          - qa
-          - prod
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [chromium, firefox]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Select target environment URL
-        id: target
-        env:
-          TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'qa' }}
-          QA_SITE_URL: ${{ vars.QA_SITE_URL }}
-          PROD_SITE_URL: ${{ vars.PROD_SITE_URL }}
-        run: |
-          case "$TARGET_ENVIRONMENT" in
-            qa)
-              SITE_URL="${QA_SITE_URL:-https://www.saucedemo.com/}"
-              ;;
-            prod)
-              if [ -z "$PROD_SITE_URL" ]; then
-                echo "Repository variable PROD_SITE_URL must be configured to run against prod."
-                exit 1
-              fi
-              SITE_URL="$PROD_SITE_URL"
-              ;;
-            *)
-              echo "Unsupported target environment: $TARGET_ENVIRONMENT"
-              exit 1
-              ;;
-          esac
-          echo "environment=$TARGET_ENVIRONMENT" >> "$GITHUB_OUTPUT"
-          echo "site_url=$SITE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -58,90 +19,16 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Install Playwright browser and system dependencies
-        run: mvn --batch-mode exec:java -Dexec.args="install --with-deps ${{ matrix.browser }}"
+      - name: Install Playwright Chromium and system dependencies
+        run: mvn --batch-mode exec:java -Dexec.args="install --with-deps chromium"
 
       - name: Run TestNG suite
-        env:
-          SITE_URL: ${{ steps.target.outputs.site_url }}
-        run: mvn --batch-mode clean test -Dplaywright.headless=true -Dplaywright.browser=${{ matrix.browser }} -Dsite.url="$SITE_URL"
+        run: mvn --batch-mode clean test -Dplaywright.headless=true -Dplaywright.browser=chromium
 
-      - name: Prepare test report summary
-        if: always()
-        id: report
-        run: |
-          python3 - <<'PY'
-          import glob
-          import os
-          import shutil
-          import xml.etree.ElementTree as ET
-
-          totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
-          report_files = glob.glob("target/surefire-reports/TEST-*.xml")
-          for report_file in report_files:
-              root = ET.parse(report_file).getroot()
-              for key in totals:
-                  totals[key] += int(root.attrib.get(key, 0))
-
-          summary = (
-              f"Tests: {totals['tests']}, "
-              f"Passed: {totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped']}, "
-              f"Failures: {totals['failures']}, Errors: {totals['errors']}, "
-              f"Skipped: {totals['skipped']}"
-              if report_files
-              else "No Surefire XML reports were generated."
-          )
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"summary={summary}\n")
-
-          os.makedirs("target/surefire-reports", exist_ok=True)
-          shutil.make_archive("target/playwright-test-report", "zip", "target/surefire-reports")
-          PY
-
-      - name: Upload test reports and failure screenshots
+      - name: Upload Extent report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-test-results-${{ matrix.browser }}
-          path: |
-            target/surefire-reports/
-            target/screenshots/
-          if-no-files-found: warn
-
-      - name: Check email notification configuration
-        if: always()
-        id: email-config
-        env:
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
-          REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
-        run: |
-          if [ -n "$SMTP_SERVER" ] && [ -n "$SMTP_USERNAME" ] && [ -n "$SMTP_PASSWORD" ] \
-            && [ -n "$REPORT_EMAIL_TO" ] && [ -n "$REPORT_EMAIL_FROM" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Email notification skipped: configure the required repository secrets."
-          fi
-
-      - name: Email test report
-        if: ${{ always() && steps.email-config.outputs.enabled == 'true' }}
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT || '587' }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "Playwright ${{ steps.target.outputs.environment }} ${{ matrix.browser }} test report: ${{ job.status }}"
-          to: ${{ secrets.REPORT_EMAIL_TO }}
-          from: ${{ secrets.REPORT_EMAIL_FROM }}
-          content_type: text/plain
-          body: |
-            Playwright ${{ steps.target.outputs.environment }} ${{ matrix.browser }} test run: ${{ job.status }}
-
-            ${{ steps.report.outputs.summary }}
-
-            View workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          attachments: target/playwright-test-report.zip
+          name: extent-report
+          path: target/extent-report.html
+          if-no-files-found: error

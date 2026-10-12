@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
 <suite name="SauceDemo Playwright UI and API Automation" parallel="false">
+    <listeners>
+        <listener class-name="com.saucedemo.playwright.reporting.ExtentReportListener"/>
+    </listeners>
     <test name="SauceDemo UI regression tests">
         <classes>
             <class name="com.saucedemo.playwright.tests.login.LoginTests"/>
