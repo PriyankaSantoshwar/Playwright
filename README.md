@@ -13,6 +13,7 @@ This project is intentionally separate from the Selenium project. Both automate 
 - Product sorting, cart validation, checkout form, and logout flows
 - Failure screenshots saved under `target/screenshots`
 - Headless CI execution through GitHub Actions
+- API testing with Playwright's `APIRequestContext`
 
 ## Technology
 
@@ -27,14 +28,16 @@ Java 17 · Maven · Playwright Java 1.63 · TestNG 7
 | Cart | Added backpack appears in cart |
 | Checkout | Cart opens the customer information step |
 | Logout | Logged-in user returns to login |
+| API | Retrieve and filter posts, retrieve related comments, create/update/delete posts, and verify a not-found response with JSONPlaceholder |
 
 The tests use SauceDemo's public demo credentials: `standard_user` / `secret_sauce`. Checkout stops at the customer information form; no order or payment is submitted.
+SauceDemo does not provide a documented public API for this project, so the API examples use the public JSONPlaceholder practice API. The API tests use Playwright's built-in API client and do not launch a browser.
 
 ## Requirements
 
 - JDK 17
 - Maven 3.9+
-- Internet access to download the Playwright Chromium browser and access SauceDemo
+- Internet access to download the Playwright Chromium browser and access SauceDemo and JSONPlaceholder
 
 ## Install the browser
 
@@ -70,6 +73,12 @@ Override the demo application URL:
 mvn clean test -Dsite.url=https://www.saucedemo.com/
 ```
 
+Override the API base URL:
+
+```bash
+mvn clean test -Dapi.base.url=https://jsonplaceholder.typicode.com
+```
+
 TestNG reports and failure screenshots are generated under `target/`.
 
 ### Run tests and email the report locally
@@ -98,9 +107,9 @@ src/
 │   ├── base/                 # Shared Page Object base
 │   └── pages/                # Login, products, cart, checkout page objects
 └── test/java/com/saucedemo/playwright/
-    ├── base/                 # Playwright lifecycle per TestNG test
+    ├── base/                 # Separate browser UI and API request lifecycles
     ├── testdata/             # Public demo credentials
-    └── tests/                # Focused scenarios by feature
+    └── tests/                # Focused UI and API scenarios
 ```
 
 ## Selenium comparison
@@ -109,7 +118,7 @@ The sibling `Priyanka_Selenium-main` project targets the same SauceDemo site and
 
 ## CI
 
-GitHub Actions installs Playwright Chromium with its Linux dependencies, runs the TestNG suite headlessly, and uploads reports and failure screenshots. When email is configured, the workflow also emails a test summary and attaches the Surefire reports as a ZIP file.
+GitHub Actions runs on pushes and pull requests, and can also be started manually from the repository's **Actions** tab by selecting **Playwright UI tests** and clicking **Run workflow**. The workflow installs Playwright Chromium with its Linux dependencies, runs the TestNG suite headlessly, and uploads reports and failure screenshots. When email is configured, the workflow also emails a test summary and attaches the Surefire reports as a ZIP file.
 
 To enable email notifications, add these repository actions secrets:
 
