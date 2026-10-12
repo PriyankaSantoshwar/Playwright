@@ -4,13 +4,52 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Environment to test
+        type: choice
+        required: true
+        default: qa
+        options:
+          - qa
+          - prod
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Select target environment URL
+        id: target
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'qa' }}
+          QA_SITE_URL: ${{ vars.QA_SITE_URL }}
+          PROD_SITE_URL: ${{ vars.PROD_SITE_URL }}
+        run: |
+          case "$TARGET_ENVIRONMENT" in
+            qa)
+              SITE_URL="${QA_SITE_URL:-https://www.saucedemo.com/}"
+              ;;
+            prod)
+              if [ -z "$PROD_SITE_URL" ]; then
+                echo "Repository variable PROD_SITE_URL must be configured to run against prod."
+                exit 1
+              fi
+              SITE_URL="$PROD_SITE_URL"
+              ;;
+            *)
+              echo "Unsupported target environment: $TARGET_ENVIRONMENT"
+              exit 1
+              ;;
+          esac
+          echo "environment=$TARGET_ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "site_url=$SITE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -19,11 +58,13 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Install Playwright Chromium and system dependencies
-        run: mvn --batch-mode exec:java -Dexec.args="install --with-deps chromium"
+      - name: Install Playwright browser and system dependencies
+        run: mvn --batch-mode exec:java -Dexec.args="install --with-deps ${{ matrix.browser }}"
 
       - name: Run TestNG suite
-        run: mvn --batch-mode clean test -Dplaywright.headless=true
+        env:
+          SITE_URL: ${{ steps.target.outputs.site_url }}
+        run: mvn --batch-mode clean test -Dplaywright.headless=true -Dplaywright.browser=${{ matrix.browser }} -Dsite.url="$SITE_URL"
 
       - name: Prepare test report summary
         if: always()
@@ -61,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-test-results
+          name: playwright-test-results-${{ matrix.browser }}
           path: |
             target/surefire-reports/
             target/screenshots/
@@ -93,12 +134,12 @@ jobs:
           server_port: ${{ secrets.SMTP_PORT || '587' }}
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "Playwright test report: ${{ job.status }}"
+          subject: "Playwright ${{ steps.target.outputs.environment }} ${{ matrix.browser }} test report: ${{ job.status }}"
           to: ${{ secrets.REPORT_EMAIL_TO }}
           from: ${{ secrets.REPORT_EMAIL_FROM }}
           content_type: text/plain
           body: |
-            Playwright UI test run: ${{ job.status }}
+            Playwright ${{ steps.target.outputs.environment }} ${{ matrix.browser }} test run: ${{ job.status }}
 
             ${{ steps.report.outputs.summary }}
 

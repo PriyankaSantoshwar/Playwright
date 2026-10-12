@@ -11,6 +11,7 @@ This project is intentionally separate from the Selenium project. Both automate 
 - Isolated browser context and page per TestNG test
 - Positive and negative login coverage
 - Product sorting, cart validation, checkout form, and logout flows
+- Chromium and Firefox browser coverage
 - Failure screenshots saved under `target/screenshots`
 - Headless CI execution through GitHub Actions
 - API testing with Playwright's `APIRequestContext`
@@ -41,10 +42,11 @@ SauceDemo does not provide a documented public API for this project, so the API 
 
 ## Install the browser
 
-Run once after cloning:
+Install Chromium (default) or Firefox:
 
 ```bash
 mvn exec:java -Dexec.args="install chromium"
+mvn exec:java -Dexec.args="install firefox"
 ```
 
 On Linux CI, install Chromium and its OS dependencies with:
@@ -66,6 +68,14 @@ Headless Chromium:
 ```bash
 mvn clean test -Dplaywright.headless=true
 ```
+
+Run the suite in Firefox:
+
+```bash
+mvn clean test -Dplaywright.headless=true -Dplaywright.browser=firefox
+```
+
+The `playwright.browser` property accepts `chromium` (default) or `firefox`. GitHub Actions runs the suite against both browsers.
 
 Override the demo application URL:
 
@@ -118,7 +128,17 @@ The sibling `Priyanka_Selenium-main` project targets the same SauceDemo site and
 
 ## CI
 
-GitHub Actions runs on pushes and pull requests, and can also be started manually from the repository's **Actions** tab by selecting **Playwright UI tests** and clicking **Run workflow**. The workflow installs Playwright Chromium with its Linux dependencies, runs the TestNG suite headlessly, and uploads reports and failure screenshots. When email is configured, the workflow also emails a test summary and attaches the Surefire reports as a ZIP file.
+GitHub Actions runs on pushes and pull requests, and can also be started manually from the repository's **Actions** tab by selecting **Playwright UI tests**, choosing `qa` or `prod`, and clicking **Run workflow**. The workflow runs the suite headlessly in Chromium and Firefox, then uploads reports and failure screenshots. When email is configured, the workflow also emails a test summary and attaches the Surefire reports as a ZIP file.
+
+Configure the target URLs as repository Actions variables under **Settings → Secrets and variables → Actions → Variables**:
+
+| Variable | Description |
+| --- | --- |
+| `QA_SITE_URL` | QA site URL (optional; defaults to the public SauceDemo demo site) |
+| `PROD_SITE_URL` | Production site URL (required to select `prod`) |
+
+Push and pull request runs use `QA_SITE_URL`, or the public SauceDemo demo site when it is not set. Production runs fail clearly if `PROD_SITE_URL` is not configured.
+Only select `prod` for an application you are authorized to test and where the configured test account is safe to use.
 
 To enable email notifications, add these repository actions secrets:
 
